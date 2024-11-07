@@ -14,18 +14,25 @@ tools = {}
 def main():
     user_input = read_user_input()
     tool_name = user_input['tool']
-    search_tool_port = start_tool('search_tool', {})
+    search_tool = start_tool('search_tool', {})
     time.sleep(1)
     accessible_tools = {
         'search_tool': {
             'description': "Search for tools",
-            'port': search_tool_port,
+            'port': search_tool['port'],
         },
     }
     tools[tool_name] = start_tool(tool_name, accessible_tools)
     time.sleep(1)
-    response = invoke_tool(tools['chat'],  user_input['resource'], user_input['input'])
-    print(response)
+    try:
+        response = invoke_tool(tools['chat'],  user_input['resource'], user_input['input'])
+        print(response)
+    finally:
+        for tool in tools.values():
+            tool_process = tool.get('process')
+            if tool_process:
+                tool_process.terminate()
+                tool_process.wait()
 
 
 def read_user_input():
@@ -55,7 +62,8 @@ def start_tool(tool_name, accessible_tools):
     }
     process.stdin.write(json.dumps(input_data).encode('utf-8'))
     process.stdin.close()
-    return {'port': port}
+    tools[tool_name] = {'port': port, 'process':process}
+    return tools[tool_name]
 
 
 def find_free_port():
