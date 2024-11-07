@@ -6,12 +6,15 @@ import subprocess
 import sys
 import time
 
+import requests
+
+tools = {}
+
 
 def main():
     user_input = read_user_input()
     tool_name = user_input['tool']
-    coins = user_input.get('coins', 100)
-    search_tool_port = start_tool('search_tool', {}, coins, {})
+    search_tool_port = start_tool('search_tool', {})
     time.sleep(1)
     accessible_tools = {
         'search_tool': {
@@ -19,7 +22,10 @@ def main():
             'port': search_tool_port,
         },
     }
-    start_tool(tool_name, user_input, coins, accessible_tools)
+    tools[tool_name] = start_tool(tool_name, accessible_tools)
+    time.sleep(1)
+    response = invoke_tool(tools['chat'],  user_input['resource'], user_input['input'])
+    print(response)
 
 
 def read_user_input():
@@ -32,11 +38,11 @@ def read_user_input():
     try:
         user_input = json.loads(content)
     except json.JSONDecodeError:
-        user_input = {"tool": "chat", "inputs": {"text_input": content}}
+        user_input = {"tool": "chat", "resource": "chat", "input": {"message": content}}
     return user_input
 
 
-def start_tool(tool_name, tool_input, coins, accessible_tools):
+def start_tool(tool_name, accessible_tools):
     tool_dir = os.path.join('tools', tool_name)
     tool_script = os.path.join(tool_dir, 'main.py')
     port = find_free_port()
@@ -45,13 +51,11 @@ def start_tool(tool_name, tool_input, coins, accessible_tools):
         stdin=subprocess.PIPE
     )
     input_data = {
-        'input': tool_input,
-        'coins': coins,
         'tools': accessible_tools
     }
     process.stdin.write(json.dumps(input_data).encode('utf-8'))
     process.stdin.close()
-    return port
+    return {'port': port}
 
 
 def find_free_port():
@@ -60,6 +64,13 @@ def find_free_port():
     port = s.getsockname()[1]
     s.close()
     return port
+
+
+def invoke_tool(tool, resource, data):
+    endpoint = f'http://localhost:{tool['port']}/{resource}'
+    print(f"POST {data}")
+    response = requests.post(endpoint, json=data)
+    return response.json()
 
 
 if __name__ == '__main__':
