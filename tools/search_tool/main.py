@@ -9,7 +9,7 @@ class Tool:
     def run(self, inputs):
         query = inputs['query']
         matching_tools = []
-        for tool_name in self.manager.tools.keys():
+        for tool_name in self.manager.processes.keys():
             if query in tool_name:
                 matching_tools.append(tool_name)
         return matching_tools

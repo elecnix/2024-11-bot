@@ -18,4 +18,4 @@ class Tool:
             f.write(tool_code)
         subprocess.run(['git', 'add', tool_path])
         subprocess.run(['git', 'commit', '-m', f"Add tool {tool_name}"])
-        self.manager.tools[tool_name] = tool_path
+        self.manager.processes[tool_name] = tool_path

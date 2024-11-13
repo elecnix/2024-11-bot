@@ -13,7 +13,7 @@ class Tool:
     def run(self, inputs):
         tool_name = inputs['tool_name']
         new_code = inputs['new_code']
-        tool_path = self.manager.tools.get(tool_name)
+        tool_path = self.manager.processes.get(tool_name)
         with open(tool_path, 'w') as f:
             f.write(new_code)
         subprocess.run(['git', 'add', tool_path])

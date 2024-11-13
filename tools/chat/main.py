@@ -1,12 +1,66 @@
 import sys
-import json
-from flask import Flask, request, jsonify
+
 import requests
+from flask import Flask, request, jsonify
 
 OLLAMA_API_URL = "http://localhost:11434/api/chat"
 
 tools = {}
 app = Flask('chat')
+
+port = int(sys.argv[1])
+
+# OpenAPI Server Objects tools
+servers = {}
+
+self_schema = {
+    "openapi": "3.1.0",
+    "info": {
+        "title": "chat",
+        "description": "Chat with a bot!",
+        "version": "0.0.1",
+        "port": port,
+        "url": f"http://127.0.0.1:{port}"
+    },
+    "servers": [
+        {
+            "url": f"http://127.0.0.1:{port}",
+            "description": "Chat with a bot!",
+            "x-tool": "chat"
+        }
+    ],
+    "paths": {
+        "/chat": {
+            "post": {
+                "requestBody": {
+                    "application/json": {
+                        "schema": {
+                            {
+                                "type": "object",
+                                "required": [
+                                    "message"
+                                ],
+                                "properties": {
+                                    "message": {
+                                        "type": "string",
+                                        "description": "The user message to send to the chat bot."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+servers["chat"] = self_schema
+
+
+@app.route('/openapi.json', methods=['GET'])
+def identify():
+    return jsonify(self_schema)
 
 
 @app.route('/chat', methods=['POST'])
@@ -29,12 +83,5 @@ def chat():
     return jsonify({'response': response.json()['message']['content']})
 
 
-def main():
-    global tools
-    config = json.load(sys.stdin)
-    tools = config['tools']
-    app.run(port=(int(sys.argv[1])))
-
-
 if __name__ == '__main__':
-    main()
+    app.run(port=port)
