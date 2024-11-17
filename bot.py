@@ -1,6 +1,8 @@
 import argparse
 import json
+import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -8,6 +10,12 @@ from time import sleep
 
 import requests
 from flask import Flask, request, jsonify
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+self_name = 'start_tool'
+
+logging.basicConfig(filename=f'{self_name}.log', level=logging.INFO)
 
 # Registry of subprocess tools
 processes = {}
@@ -15,8 +23,13 @@ processes = {}
 # OpenAPI Server Objects tools
 servers = {}
 
-self_name = 'start_tool'
 app = Flask(self_name)
+
+retry_strategy = Retry(connect=10, backoff_factor=1)
+
+adapter = HTTPAdapter(max_retries=retry_strategy)
+session = requests.Session()
+session.mount("http://", adapter)
 
 
 def interactive(port: int):
@@ -25,21 +38,27 @@ def interactive(port: int):
         try:
             user_input = read_user_input()
             tool = get_tool(user_input['tool'])
-            response = tool.post(user_input['input'], resource=user_input['resource'])
-            print(response)
+            response = tool['post'](user_input['input'], resource=user_input['resource'])
+            print(response['content'])
         except KeyboardInterrupt:
-            print("Keyboard Interrupt")
+            app.logger.warning("Keyboard Interrupt")
             shutdown()
         except Exception as e:
-            print(e)
+            app.logger.exception(e)
+            shutdown()
+            return
 
 
 def subprocess_server(port: int):
-    process = subprocess.Popen(
-        ['python', __file__, '--interactive', 'false', '-p', str(port)],
-        stdin=subprocess.PIPE
-    )
-    process.stdin.close()
+    app.logger.info(f"Starting server process on port {port}")
+    with open(f"bot-server.log", "w") as log_file:
+        process = subprocess.Popen(
+            ['python', __file__, '--server', '-p', str(port)],
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True  # Detach process from the parent
+        )
+    app.logger.info(f"Started server: pid {process.pid}, port {port}")
     return register_tool(port, process, self_name)
 
 
@@ -48,19 +67,19 @@ def read_user_input():
     try:
         user_input = json.loads(content)
     except json.JSONDecodeError:
-        user_input = {"tool": "chat", "resource": "chat", "input": {"message": content}}
+        user_input = {"tool": "chat", "resource": "/chat", "input": {"message": content}}
     return user_input
 
 
 def get_tool(tool_name):
-    if tool_name in processes:
+    if tool_name in processes.keys():
         return processes[tool_name]
     return start_tool(tool_name)
 
 
 def start_tool(tool_name, port: int = None):
     port = port if port else find_free_port()
-    print(f"Starting '{tool_name}' on port {port}")
+    app.logger.info(f"Starting '{tool_name}' on port {port}")
     process = subprocess.Popen(
         ['python', os.path.join('tools', tool_name, 'main.py'), str(port)],
         stdin=subprocess.PIPE
@@ -72,17 +91,17 @@ def start_tool(tool_name, port: int = None):
 
 def register_tool(port, process, tool_name):
     url = f'http://localhost:{port}'
-    print(f"Registering '{tool_name}' at {url}")
+    app.logger.info(f"Registering '{tool_name}' at {url}")
 
     def post(data, resource='/'):
         endpoint = f'{url}{resource}'
-        print(f"{tool_name} POST {endpoint} \n{data}")
-        return requests.post(endpoint, json=data).json()
+        app.logger.info(f"{tool_name} POST {endpoint} \n{data}")
+        return session.post(endpoint, json=data).json()
 
     def get(resource='/'):
         endpoint = f'{url}{resource}'
-        print(f"{tool_name} GET {endpoint}")
-        return requests.get(endpoint).json()
+        app.logger.info(f"{tool_name} GET {endpoint}")
+        return session.get(endpoint).json()
 
     sleep(1)
     identification = get('/openapi.json')
@@ -114,7 +133,7 @@ def identify():
             "url": f"http://{host}:{port}"
         },
         "servers": [
-            servers.values()
+            list(servers.values())
         ],
         "paths": {
             "/start": {
@@ -122,16 +141,14 @@ def identify():
                     "requestBody": {
                         "application/json": {
                             "schema": {
-                                {
-                                    "type": "object",
-                                    "required": [
-                                        "name"
-                                    ],
-                                    "properties": {
-                                        "name": {
-                                            "type": "string",
-                                            "description": "The name of the tool to start, which corresponds to the name of the directory containing a main.py file."
-                                        }
+                                "type": "object",
+                                "required": [
+                                    "name"
+                                ],
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "The name of the tool to start, which corresponds to the name of the directory containing a main.py file."
                                     }
                                 }
                             }
@@ -160,21 +177,21 @@ def shutdown():
     for tool_info in processes.values():
         tool_process = tool_info.get('process')
         if tool_process:
-            tool_process.terminate()
+            os.kill(tool_process.pid, signal.SIGTERM)
             tool_process.wait()
     return {"status": "shutting down"}
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='bot')
-    parser.add_argument("-i", "--interactive", type=bool, default=True)
+    parser.add_argument("-s", "--server", action="store_true")
     parser.add_argument('-p', '--port', default=8080, type=int)
     args = parser.parse_args(sys.argv[1:])
 
     # Prepare for reentrant call to /openapi.json which returns a list of servers
     servers[self_name] = {"url": f"http://127.0.0.1:{args.port}", "description": self_name, "x-tool": self_name}
 
-    if args.interactive:
-        interactive(port=args.port)
-    else:
+    if args.server:
         app.run(port=args.port)
+    else:
+        interactive(port=args.port)

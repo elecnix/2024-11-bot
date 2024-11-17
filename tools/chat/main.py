@@ -35,16 +35,14 @@ self_schema = {
                 "requestBody": {
                     "application/json": {
                         "schema": {
-                            {
-                                "type": "object",
-                                "required": [
-                                    "message"
-                                ],
-                                "properties": {
-                                    "message": {
-                                        "type": "string",
-                                        "description": "The user message to send to the chat bot."
-                                    }
+                            "type": "object",
+                            "required": [
+                                "message"
+                            ],
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "The user message to send to the chat bot."
                                 }
                             }
                         }
@@ -70,7 +68,7 @@ def chat():
         "model": tool_input.get("model", "llama3:8b"),
         "messages": [
             {"role": "system", "content": "You are a chat bot."},
-            {"role": "system", "content": f"{tool_input['message']}"},
+            {"role": "user", "content": f"{tool_input['message']}"},
         ],
         "stream": False,
         "options": {
@@ -80,7 +78,7 @@ def chat():
     print(f"POST {OLLAMA_API_URL}{data}")
     response = requests.post(OLLAMA_API_URL, json=data)
     response.raise_for_status()
-    return jsonify({'response': response.json()['message']['content']})
+    return jsonify({'content': response.json()['message']['content']})
 
 
 if __name__ == '__main__':
