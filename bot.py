@@ -7,13 +7,15 @@ import socket
 import subprocess
 import sys
 from time import sleep
+from typing import Dict
 
 import requests
 from flask import Flask, request, jsonify
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-self_name = 'start_tool'
+self_name = 'tool_registry'
+self_description = "Registry that can start a tool."
 
 logging.basicConfig(filename=f'bot.log', level=logging.INFO)
 
@@ -21,7 +23,7 @@ logging.basicConfig(filename=f'bot.log', level=logging.INFO)
 processes = {}
 
 # OpenAPI Server Objects tools
-servers = {}
+servers: Dict[str, list] = {}
 
 app = Flask(self_name)
 
@@ -84,7 +86,8 @@ def start_tool(tool_name, port: int = None):
         ['python', os.path.join('tools', tool_name, 'main.py'), str(port)],
         stdin=subprocess.PIPE
     )
-    process.stdin.write(json.dumps({'servers': servers}).encode('utf-8'))
+    merged = [srv for tool_servers in servers.values() for srv in tool_servers]
+    process.stdin.write(json.dumps({'servers': merged}).encode('utf-8'))
     process.stdin.close()
     return register_tool(port, process, tool_name)
 
@@ -126,18 +129,18 @@ def identify():
     response = {
         "openapi": "3.1.0",
         "info": {
-            "title": "start_tool",
-            "description": "Start a tool to get its port number to invoke the tool.",
+            "title": "tool_registry",
+            "description": self_description,
             "version": "0.0.1",
             "port": port,
             "url": f"http://{host}:{port}"
         },
-        "servers": [
-            list(servers.values())
-        ],
+        "servers": [srv for tool_servers in servers.values() for srv in tool_servers],
         "paths": {
             "/start": {
                 "post": {
+                    "summary": "Start a tool, adding it to the registry.",
+                    "operationId": "start_tool",
                     "requestBody": {
                         "application/json": {
                             "schema": {
@@ -153,7 +156,26 @@ def identify():
                                 }
                             }
                         }
+                    },
+                    "responses": {
+                        "200": {
+                            "description": "Tool has been started.",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "$ref": "https://json-schema.org/draft/2020-12/schema"
+                                    }
+                                }
+                            }
+                        }
                     }
+                }
+            },
+            "/list": {
+                "get": {
+                    "operationId": "list_tools",
+                    "summary": "List the currently running tools.",
+                    "description": "Once a tool has been started, it should be listed in the response."
                 }
             }
         }
@@ -163,12 +185,17 @@ def identify():
 
 @app.route('/start', methods=['POST'])
 def start_tool_route():
-    """Endpoint to start a tool via HTTP POST request."""
-    data = request.json
-    tool_name = data['tool']
-    accessible_tools = data.get('accessible_tools', {})
-    result = start_tool(tool_name, accessible_tools)
-    return jsonify(result)
+    """Endpoint to start a tool via HTTP POST request, returning its OpenAPI schema."""
+    tool_name = request.json['name']
+    start_tool(tool_name)
+    return jsonify(servers[tool_name])
+
+@app.route('/list', methods=['GET'])
+def list_tools_route():
+    """List the currently running tools."""
+    tool_name = request.json['name']
+    start_tool(tool_name)
+    return jsonify(servers[tool_name])
 
 
 @app.route('/shutdown', methods=['POST'])
@@ -189,7 +216,8 @@ if __name__ == '__main__':
     args = parser.parse_args(sys.argv[1:])
 
     # Prepare for reentrant call to /openapi.json which returns a list of servers
-    servers[self_name] = {"url": f"http://127.0.0.1:{args.port}", "description": self_name, "x-tool": self_name}
+    servers[self_name] = [
+        {"url": f"http://127.0.0.1:{args.port}", "description": self_description, "x-tool": self_name}]
 
     if args.server:
         app.run(port=args.port)
