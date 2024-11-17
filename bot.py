@@ -22,8 +22,8 @@ logging.basicConfig(filename=f'bot.log', level=logging.INFO)
 # Registry of subprocess tools
 processes = {}
 
-# OpenAPI Server Objects tools
-servers: Dict[str, list] = {}
+# OpenAPI Object for each tool
+openapi_objects: Dict[str, Dict] = {}
 
 app = Flask(self_name)
 
@@ -33,6 +33,8 @@ adapter = HTTPAdapter(max_retries=retry_strategy)
 session = requests.Session()
 session.mount("http://", adapter)
 
+
+### Interactive functions
 
 def interactive(port: int):
     subprocess_server(port)
@@ -61,7 +63,8 @@ def subprocess_server(port: int):
             start_new_session=True  # Detach process from the parent
         )
     app.logger.info(f"Started server: pid {process.pid}, port {port}")
-    return register_tool(port, process, self_name)
+    # Interactive mode: this is the only tool we'll register
+    return register_tool_process(port, process, self_name)
 
 
 def read_user_input():
@@ -76,8 +79,16 @@ def read_user_input():
 def get_tool(tool_name):
     if tool_name in processes.keys():
         return processes[tool_name]
-    return start_tool(tool_name)
+    return delegate_start_tool(tool_name)
 
+
+def delegate_start_tool(tool_name):
+    """Delegate the task of starting a tool to the server."""
+    openapi = processes[self_name]['post']({"name": tool_name}, '/start')
+    return get_tool_handle(openapi["servers"][0]["url"], tool_name)
+
+
+### Server functions
 
 def start_tool(tool_name, port: int = None):
     port = port if port else find_free_port()
@@ -86,16 +97,24 @@ def start_tool(tool_name, port: int = None):
         ['python', os.path.join('tools', tool_name, 'main.py'), str(port)],
         stdin=subprocess.PIPE
     )
-    merged = [srv for tool_servers in servers.values() for srv in tool_servers]
-    process.stdin.write(json.dumps({'servers': merged}).encode('utf-8'))
+    servers = [srv for openapi in openapi_objects.values() for srv in openapi["servers"]]
+    process.stdin.write(json.dumps({'servers': servers}).encode('utf-8'))
     process.stdin.close()
-    return register_tool(port, process, tool_name)
+    sleep(1)
+    return register_tool_process(port, process, tool_name)
 
 
-def register_tool(port, process, tool_name):
+def register_tool_process(port, process, tool_name):
     url = f'http://localhost:{port}'
     app.logger.info(f"Registering '{tool_name}' at {url}")
+    tool = get_tool_handle(url, tool_name)
+    tool.update({'process': process})
+    processes[tool_name] = tool
+    openapi_objects[tool_name] = tool['get']('/openapi.json')
+    return openapi_objects[tool_name]
 
+
+def get_tool_handle(url, tool_name):
     def post(data, resource='/'):
         endpoint = f'{url}{resource}'
         app.logger.info(f"{tool_name} POST {endpoint} \n{data}")
@@ -106,11 +125,7 @@ def register_tool(port, process, tool_name):
         app.logger.info(f"{tool_name} GET {endpoint}")
         return session.get(endpoint).json()
 
-    sleep(1)
-    identification = get('/openapi.json')
-    processes[tool_name] = {'process': process, 'get': get, 'post': post}
-    servers[tool_name] = identification["servers"]
-    return processes[tool_name]
+    return {'get': get, 'post': post}
 
 
 def find_free_port():
@@ -126,6 +141,10 @@ def identify():
     """Self-report tool identification."""
     host = request.host
     port = host.split(':')[1] if ':' in host else '80'
+    return jsonify(self_identification(host, port))
+
+
+def self_identification(host, port):
     response = {
         "openapi": "3.1.0",
         "info": {
@@ -135,7 +154,7 @@ def identify():
             "port": port,
             "url": f"http://{host}:{port}"
         },
-        "servers": [srv for tool_servers in servers.values() for srv in tool_servers],
+        "servers": [{"url": f"http://127.0.0.1:{args.port}", "description": self_description, "x-tool": self_name}],
         "paths": {
             "/start": {
                 "post": {
@@ -180,7 +199,7 @@ def identify():
             }
         }
     }
-    return jsonify(response)
+    return response
 
 
 @app.route('/start', methods=['POST'])
@@ -188,14 +207,13 @@ def start_tool_route():
     """Endpoint to start a tool via HTTP POST request, returning its OpenAPI schema."""
     tool_name = request.json['name']
     start_tool(tool_name)
-    return jsonify(servers[tool_name])
+    return openapi_objects[tool_name]
+
 
 @app.route('/list', methods=['GET'])
 def list_tools_route():
     """List the currently running tools."""
-    tool_name = request.json['name']
-    start_tool(tool_name)
-    return jsonify(servers[tool_name])
+    return jsonify(openapi_objects)
 
 
 @app.route('/shutdown', methods=['POST'])
@@ -215,11 +233,8 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--port', default=8080, type=int)
     args = parser.parse_args(sys.argv[1:])
 
-    # Prepare for reentrant call to /openapi.json which returns a list of servers
-    servers[self_name] = [
-        {"url": f"http://127.0.0.1:{args.port}", "description": self_description, "x-tool": self_name}]
-
     if args.server:
+        openapi_objects[self_name] = self_identification('localhost', args.port)
         app.run(port=args.port)
     else:
         interactive(port=args.port)
