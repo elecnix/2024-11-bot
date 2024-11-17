@@ -9,7 +9,7 @@ OpenAPI schema.
 
 The recommended way is to run the root bot in a Docker container:
 
-    docker run -v .:/root/ -w /root ghcr.io/astral-sh/uv:python3.12-alpine uv run bot.py
+    docker run -v .:/root/ -w /root -e UV_PROJECT_ENVIRONMENT=/root/.venv-docker ghcr.io/astral-sh/uv:python3.12-alpine uv run bot.py
 
 The bot has two execution modes: interactive, or server. The interactive mode allows a user to send input to the bot
 from standard input, and the server mode receives commands through HTTP requests. The interactive mode transparently
