@@ -15,7 +15,7 @@ from urllib3.util.retry import Retry
 
 self_name = 'start_tool'
 
-logging.basicConfig(filename=f'{self_name}.log', level=logging.INFO)
+logging.basicConfig(filename=f'bot.log', level=logging.INFO)
 
 # Registry of subprocess tools
 processes = {}
@@ -44,7 +44,7 @@ def interactive(port: int):
             app.logger.warning("Keyboard Interrupt")
             shutdown()
         except Exception as e:
-            app.logger.exception(e)
+            app.logger.exception("Exception in interactive mode")
             shutdown()
             return
 
