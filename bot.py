@@ -4,6 +4,7 @@ import os
 import socket
 import subprocess
 import sys
+from time import sleep
 
 import requests
 from flask import Flask, request, jsonify
@@ -83,6 +84,7 @@ def register_tool(port, process, tool_name):
         print(f"{tool_name} GET {endpoint}")
         return requests.get(endpoint).json()
 
+    sleep(1)
     identification = get('/openapi.json')
     processes[tool_name] = {'process': process, 'get': get, 'post': post}
     servers[tool_name] = identification["servers"]
@@ -165,12 +167,12 @@ def shutdown():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='bot')
-    parser.add_argument("-i", "--interactive", action="store_true", default=True)
+    parser.add_argument("-i", "--interactive", type=bool, default=True)
     parser.add_argument('-p', '--port', default=8080, type=int)
     args = parser.parse_args(sys.argv[1:])
 
     # Prepare for reentrant call to /openapi.json which returns a list of servers
-    servers[self_name] = {"url": "http://127.0.0.1:" + args.port, "description": self_name, "x-tool": self_name}
+    servers[self_name] = {"url": f"http://127.0.0.1:{args.port}", "description": self_name, "x-tool": self_name}
 
     if args.interactive:
         interactive(port=args.port)
