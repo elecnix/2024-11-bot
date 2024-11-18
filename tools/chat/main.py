@@ -5,7 +5,7 @@ import traceback
 from json import JSONDecodeError
 
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 
 OLLAMA_API_URL = "http://localhost:11434/api/chat"
 self_name = 'chat'
@@ -77,7 +77,7 @@ def get_tools_schemas_route():
     return openapi_objects
 
 
-def call_tool(tool_call):
+def call_tool(tool_call, tool_depth=0):
     """Maps a tool call to an operation on an OpenAPI object."""
     invoked_name = tool_call["function"]["name"]
     try:
@@ -106,13 +106,15 @@ def call_tool(tool_call):
             # Extract parameters from the tool_call
             tool_parameters = tool_call["function"].get("arguments", {})
 
+            headers = {"X-Tool-Depth": str(tool_depth + 1)}
+
             # Issue the appropriate HTTP request (currently supports POST)
             if matching_method.lower() == "post":
-                app.logger.info(f"POST {endpoint}\n{json.dumps(tool_parameters, indent=4)}")
-                response = requests.post(endpoint, json=tool_parameters)
+                app.logger.info(f"POST {endpoint} tool_depth={tool_depth}\n{json.dumps(tool_parameters, indent=4)}")
+                response = requests.post(endpoint, json=tool_parameters, headers=headers)
             elif matching_method.lower() == "get":
                 app.logger.info(f"GET {endpoint} with params {json.dumps(tool_parameters, indent=4)}")
-                response = requests.get(endpoint, params=tool_parameters)
+                response = requests.get(endpoint, params=tool_parameters, headers=headers)
             else:
                 return {"role": "tool", "content": f"Unsupported HTTP method: {matching_method}"}
 
@@ -127,8 +129,11 @@ def call_tool(tool_call):
 
 
 @app.route('/chat', methods=['POST'])
-def chat():
+def chat_route():
     tool_input = request.json
+    tool_depth = int(request.headers.get("X-Tool-Depth", 0))
+    if tool_depth > 3:
+        return jsonify({'content': "You have reached the maximum depth of chat calls!"})
     model = tool_input.get("model", "llama3.1:8b")
     message = tool_input['message']
     messages = [
@@ -145,10 +150,12 @@ When invoking a tool, you must pick one from the provided list."""},
     while 'tool_calls' in model_response['message']:
         messages.append(model_response['message'])
         for tool_call in model_response['message']['tool_calls']:
-            messages.append(call_tool(tool_call))
+            messages.append(call_tool(tool_call, tool_depth))
         model_response = ollama(messages, model, temperature)
 
-    return jsonify({'content': model_response['message']['content']})
+    response = make_response(jsonify({'content': model_response['message']['content']}))
+    response.headers['X-Tool-Depth'] = tool_depth
+    return response
 
 
 @app.route('/tools', methods=['GET'])
