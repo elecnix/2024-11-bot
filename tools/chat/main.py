@@ -2,6 +2,7 @@ import json
 import logging
 import sys
 import traceback
+from json import JSONDecodeError
 
 import requests
 from flask import Flask, request, jsonify
@@ -115,8 +116,7 @@ def get_tools():
                 app.logger.info(f"Defining tool {tool_name}")
                 description = operation.get("summary", f"{method.upper()} {path}")
                 parameters = operation.get("parameters", [])
-                request_schema = operation.get("requestBody", {}).get("content", {}).get("application/json", {}).get(
-                    "schema", {})
+                request_schema = operation.get("requestBody", {}).get("application/json", {}).get("schema", {})
                 param_schema = {
                     "type": "object",
                     "properties": {},
@@ -181,9 +181,12 @@ def get_schema(server_endpoint):
 
 
 if __name__ == '__main__':
-    boot = json.loads(sys.stdin.read())  # List of OpenAPI Server objects
-    app.logger.info(json.dumps(boot, indent=4))
-    for server in boot["servers"]:
-        openapi_objects[server['x-tool']] = get_schema(server)
-        app.logger.info(f"Received {server['x-tool']}")
+    try:
+        boot = json.loads(sys.stdin.read())  # List of OpenAPI Server objects
+        app.logger.info(json.dumps(boot, indent=4))
+        for server in boot["servers"]:
+            openapi_objects[server['x-tool']] = get_schema(server)
+            app.logger.info(f"Received {server['x-tool']}")
+    except JSONDecodeError as e:
+        app.logger.error(f"Failed to parse boot JSON\n{traceback.format_exc()}")
     app.run(port=port)
