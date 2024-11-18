@@ -1,3 +1,4 @@
+import logging
 import sys
 import traceback
 
@@ -6,8 +7,11 @@ from flask import Flask, request, jsonify
 import json
 
 OLLAMA_API_URL = "http://localhost:11434/api/chat"
+self_name = 'chat'
 
-app = Flask('chat')
+logging.basicConfig(filename=f'logs/{self_name}.log', level=logging.INFO)
+
+app = Flask(self_name)
 
 port = int(sys.argv[1])
 
@@ -83,8 +87,10 @@ def chat():
     messages = [
         {"role": "system", "content": """\
 You are a chat bot.
-You have access to tools, but their output is not visible to the user.
-The 'chat' tool is yourself, which you may use for deep self-reflection."""},
+You respond directly to the user.
+You have access to a strict list of tools.
+Tool outputs are not visible to the user, so you should read their output to answer the user's prompt.
+When invoking a tool, you must pick one from the provided list."""},
         {"role": "user", "content": f"{message}"},
     ]
     temperature = tool_input.get("temperature", 0)
@@ -106,6 +112,7 @@ def get_tools():
         for path, operations in paths.items():
             for method, operation in operations.items():
                 tool_name = operation.get("operationId", f"{method}_{path.strip('/').replace('/', '_')}")
+                app.logger.info(f"Defining tool {tool_name}")
                 description = operation.get("summary", f"{method.upper()} {path}")
                 parameters = operation.get("parameters", [])
                 request_schema = operation.get("requestBody", {}).get("content", {}).get("application/json", {}).get(
@@ -160,10 +167,10 @@ def ollama(messages, model, temperature):
         }
     }
 
-    print(f"POST {OLLAMA_API_URL}\n{json.dumps(data, indent=4)}")
+    app.logger.info(f"POST {OLLAMA_API_URL}\n{json.dumps(data, indent=4)}")
     response = requests.post(OLLAMA_API_URL, json=data)
     response.raise_for_status()
-    print(f"Model response:\n{json.dumps(response.json(), indent=4)}")
+    app.logger.info(f"Model response:\n{json.dumps(response.json(), indent=4)}")
     return response.json()
 
 
@@ -175,8 +182,8 @@ def get_schema(server_endpoint):
 
 if __name__ == '__main__':
     boot = json.loads(sys.stdin.read())  # List of OpenAPI Server objects
-    print(json.dumps(boot, indent=4))
+    app.logger.info(json.dumps(boot, indent=4))
     for server in boot["servers"]:
         openapi_objects[server['x-tool']] = get_schema(server)
-        print(f"Received {server['x-tool']}")
+        app.logger.info(f"Received {server['x-tool']}")
     app.run(port=port)

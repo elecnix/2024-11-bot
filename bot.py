@@ -17,7 +17,7 @@ from urllib3.util.retry import Retry
 self_name = 'tool_registry'
 self_description = "Registry that can start a tool."
 
-logging.basicConfig(filename=f'bot.log', level=logging.INFO)
+logging.basicConfig(filename=f'logs/bot.log', level=logging.INFO)
 
 # Registry of subprocess tools
 processes = {}
@@ -55,7 +55,7 @@ def interactive(port: int):
 
 def subprocess_server(port: int):
     app.logger.info(f"Starting server process on port {port}")
-    with open(f"bot-server.log", "w") as log_file:
+    with open(f"logs/bot-server.log", "w") as log_file:
         process = subprocess.Popen(
             ['python', __file__, '--server', '-p', str(port)],
             stdout=log_file,
@@ -206,7 +206,8 @@ def self_identification(host, port):
 def start_tool_route():
     """Endpoint to start a tool via HTTP POST request, returning its OpenAPI schema."""
     tool_name = request.json['name']
-    start_tool(tool_name)
+    if tool_name not in processes.keys():
+        start_tool(tool_name)
     return openapi_objects[tool_name]
 
 
@@ -224,7 +225,8 @@ def shutdown():
         if tool_process:
             os.kill(tool_process.pid, signal.SIGTERM)
             tool_process.wait()
-    return {"status": "shutting down"}
+    logging.info("Shutdown complete")
+    exit(0)
 
 
 if __name__ == '__main__':
@@ -232,6 +234,8 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--server", action="store_true")
     parser.add_argument('-p', '--port', default=8080, type=int)
     args = parser.parse_args(sys.argv[1:])
+    signal.signal(signal.SIGTERM, lambda signum, frame: shutdown())
+    signal.signal(signal.SIGINT, lambda signum, frame: shutdown())
 
     if args.server:
         openapi_objects[self_name] = self_identification('localhost', args.port)
