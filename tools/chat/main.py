@@ -71,17 +71,59 @@ openapi_objects["chat"] = self_schema
 def identify():
     return jsonify(self_schema)
 
+
 @app.route('/tools/schemas', methods=['GET'])
 def get_tools_schemas_route():
     return openapi_objects
 
 
 def call_tool(tool_call):
-    name = tool_call["function"]["name"]
+    """Maps a tool call to an operation on an OpenAPI object."""
+    invoked_name = tool_call["function"]["name"]
     try:
-        return {"role": "tool", "content": f"Error! No such tool: {name}"}
-    except Exception as e:
+        for tool_name, openapi in openapi_objects.items():
+            tool_schema = openapi_objects[tool_name]
+
+            # Find the correct path and method matching the operationId
+            matching_path = None
+            matching_method = None
+            for path, operations in tool_schema["paths"].items():
+                for method, operation in operations.items():
+                    if operation.get("operationId") == invoked_name:
+                        matching_path = path
+                        matching_method = method
+                        break
+                if matching_path:
+                    break
+
+            if not matching_path or not matching_method:
+                continue  # Try the next tool
+
+            # Construct the endpoint URL
+            tool_url = tool_schema["servers"][0]["url"]  # Assuming the first server URL is valid
+            endpoint = f"{tool_url}{matching_path}"
+
+            # Extract parameters from the tool_call
+            tool_parameters = tool_call["function"].get("arguments", {})
+
+            # Issue the appropriate HTTP request (currently supports POST)
+            if matching_method.lower() == "post":
+                app.logger.info(f"POST {endpoint}\n{json.dumps(tool_parameters, indent=4)}")
+                response = requests.post(endpoint, json=tool_parameters)
+            elif matching_method.lower() == "get":
+                app.logger.info(f"GET {endpoint} with params {json.dumps(tool_parameters, indent=4)}")
+                response = requests.get(endpoint, params=tool_parameters)
+            else:
+                return {"role": "tool", "content": f"Unsupported HTTP method: {matching_method}"}
+
+            response.raise_for_status()
+            result = response.json()
+
+            return {"role": "tool", "content": json.dumps(result, indent=4)}
+    except Exception:
+        app.logger.error(f"Error invoking tool:\n{traceback.format_exc()}")
         return {"role": "tool", "content": f"Error invoking tool:\n{traceback.format_exc()}"}
+    return {"role": "tool", "content": f"Error! No matching path or method for tool: {invoked_name}"}
 
 
 @app.route('/chat', methods=['POST'])
@@ -107,6 +149,7 @@ When invoking a tool, you must pick one from the provided list."""},
         model_response = ollama(messages, model, temperature)
 
     return jsonify({'content': model_response['message']['content']})
+
 
 @app.route('/tools', methods=['GET'])
 def get_tools_route():
