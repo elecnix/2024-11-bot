@@ -1,15 +1,15 @@
+import json
 import logging
 import sys
 import traceback
 
 import requests
 from flask import Flask, request, jsonify
-import json
 
 OLLAMA_API_URL = "http://localhost:11434/api/chat"
 self_name = 'chat'
 
-logging.basicConfig(filename=f'logs/{self_name}.log', level=logging.INFO)
+logging.basicConfig(filename=f'{self_name}.log', level=logging.INFO)
 
 app = Flask(self_name)
 

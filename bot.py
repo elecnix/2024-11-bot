@@ -6,6 +6,7 @@ import signal
 import socket
 import subprocess
 import sys
+from pathlib import Path
 from time import sleep
 from typing import Dict
 
@@ -17,6 +18,7 @@ from urllib3.util.retry import Retry
 self_name = 'tool_registry'
 self_description = "Registry that can start a tool."
 
+Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(filename=f'logs/bot.log', level=logging.INFO)
 
 # Registry of subprocess tools
@@ -94,7 +96,8 @@ def start_tool(tool_name, port: int = None):
     port = port if port else find_free_port()
     app.logger.info(f"Starting '{tool_name}' on port {port}")
     process = subprocess.Popen(
-        ['python', os.path.join('tools', tool_name, 'main.py'), str(port)],
+        ['python', 'main.py', str(port)],
+        cwd=os.path.join('tools', tool_name),
         stdin=subprocess.PIPE
     )
     servers = [srv for openapi in openapi_objects.values() for srv in openapi["servers"]]
