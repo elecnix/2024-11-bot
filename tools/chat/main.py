@@ -71,6 +71,10 @@ openapi_objects["chat"] = self_schema
 def identify():
     return jsonify(self_schema)
 
+@app.route('/tools/schemas', methods=['GET'])
+def get_tools_schemas_route():
+    return openapi_objects
+
 
 def call_tool(tool_call):
     name = tool_call["function"]["name"]
@@ -103,6 +107,10 @@ When invoking a tool, you must pick one from the provided list."""},
         model_response = ollama(messages, model, temperature)
 
     return jsonify({'content': model_response['message']['content']})
+
+@app.route('/tools', methods=['GET'])
+def get_tools_route():
+    return get_tools()
 
 
 def get_tools():
@@ -142,7 +150,6 @@ def get_tools():
                 # Remove duplicates in the "required" list
                 param_schema["required"] = list(set(param_schema["required"]))
 
-                # Generate tool entry
                 tools.append({
                     "type": "function",
                     "function": {
@@ -152,7 +159,6 @@ def get_tools():
                     },
                 })
 
-        return tools
     return tools
 
 
@@ -182,7 +188,10 @@ def get_schema(server_endpoint):
 
 if __name__ == '__main__':
     try:
-        boot = json.loads(sys.stdin.read())  # List of OpenAPI Server objects
+        # Read list of OpenAPI Server objects;
+        # sys.stdin.read() returns a single line in PyCharm, so we loop
+        input_data = [line for line in iter(sys.stdin.readline, '')]
+        boot = json.loads(''.join(input_data))
         app.logger.info(json.dumps(boot, indent=4))
         for server in boot["servers"]:
             openapi_objects[server['x-tool']] = get_schema(server)
