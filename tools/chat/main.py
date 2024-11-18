@@ -23,7 +23,7 @@ self_schema = {
     "openapi": "3.1.0",
     "info": {
         "title": "chat",
-        "description": "Chat with a bot!",
+        "description": "Tool that uses Ollama",
         "version": "0.0.1",
         "port": port,
         "url": f"http://127.0.0.1:{port}"
@@ -31,18 +31,15 @@ self_schema = {
     "servers": [
         {
             "url": f"http://127.0.0.1:{port}",
-            "description": "Chat with a bot!",
+            "description": "Tool that uses Ollama",
             "x-tool": "chat"
         }
     ],
     "paths": {
         "/chat": {
             "post": {
-                "summary": """\
-Humans can send a message to a chat bot with this API.
-If you are a chat bot, then this is yourself, the chat bot! You can respond directly to the user, or you can invoke this tool to branch out your thinking process recursively.
-Be sure to include context on what the user said, and why you are invoking yourself before answering to the user.""",
-                "operationId": "chat",
+                "summary": """Instruct a large language model on what to do. Be sure to describe the user's intend.""",
+                "operationId": "ollama",
                 "requestBody": {
                     "application/json": {
                         "schema": {
@@ -53,7 +50,7 @@ Be sure to include context on what the user said, and why you are invoking yours
                             "properties": {
                                 "message": {
                                     "type": "string",
-                                    "description": "Your message to the chat bot."
+                                    "description": "Your instruction to the LLM."
                                 }
                             }
                         }
@@ -138,8 +135,8 @@ def chat_route():
     message = tool_input['message']
     messages = [
         {"role": "system", "content": """\
-You are a chat bot.
-You respond directly to the user.
+You are a chat bot that responds directly to the human user.
+In some cases, the user may make a request that requires the use of tools.
 You have access to a strict list of tools.
 Tool outputs are not visible to the user, so you should read their output to answer the user's prompt.
 When invoking a tool, you must pick one from the provided list."""},
@@ -150,6 +147,10 @@ When invoking a tool, you must pick one from the provided list."""},
     while 'tool_calls' in model_response['message']:
         messages.append(model_response['message'])
         for tool_call in model_response['message']['tool_calls']:
+            invoked_name = tool_call["function"]["name"]
+            # LLMs like to respond with a tool, so we give it one.
+            if invoked_name == "respond":
+                return {"role": "assistant", "content": tool_call["function"]["arguments"]["response"]}
             messages.append(call_tool(tool_call, tool_depth))
         model_response = ollama(messages, model, temperature)
 
@@ -209,6 +210,22 @@ def get_tools():
                     },
                 })
 
+    tools.append({
+        "type": "function",
+        "function": {
+            "name": "respond",
+            "description": "Respond to user",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "response": {
+                        "type": "string"
+                    }
+                },
+                "required": ["response"],
+            },
+        },
+    })
     return tools
 
 
