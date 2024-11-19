@@ -159,7 +159,22 @@ def start_tool_route():
 @app.route('/list', methods=['GET'])
 def list_tools_route():
     """List the currently running tools."""
-    return jsonify(openapi_objects)
+    tool_names = sorted(os.listdir('..'))
+    tools = {}
+    for tool_name in tool_names:
+        if '__pycache__' in tool_name:
+            continue
+        status = "Stopped"
+        info = None
+        if tool_name in openapi_objects.keys():
+            status = "Started"
+            info = openapi_objects[tool_name]['info']
+        tools[tool_name] = {
+            "status": status,
+            "info": info
+        }
+
+    return jsonify(tools)
 
 
 @app.route('/shutdown', methods=['POST'])
