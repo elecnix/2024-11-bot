@@ -138,7 +138,7 @@ def self_schema(host):
             "/list": {
                 "get": {
                     "operationId": "list_tools",
-                    "summary": "List the currently running tools.",
+                    "summary": "List the available tools.",
                     "description": "Once a tool has been started, it should be listed in the response."
                 }
             }

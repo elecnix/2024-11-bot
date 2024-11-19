@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify, make_response
 
 OLLAMA_API_URL = "http://localhost:11434/api/chat"
 self_name = 'chat'
+tool_blacklist = [self_name] # Don't allow self-calls, the LLM gets too confused.
 
 logging.basicConfig(filename=f'{self_name}.log', level=logging.INFO)
 
@@ -39,7 +40,7 @@ self_schema = {
         "/chat": {
             "post": {
                 "summary": """Instruct a large language model on what to do. Be sure to describe the user's intend.""",
-                "operationId": "ollama",
+                "operationId": "chat",
                 "requestBody": {
                     "application/json": {
                         "schema": {
@@ -172,6 +173,8 @@ def get_tools():
         for path, operations in paths.items():
             for method, operation in operations.items():
                 tool_name = operation.get("operationId", f"{method}_{path.strip('/').replace('/', '_')}")
+                if tool_name in tool_blacklist:
+                    continue
                 app.logger.info(f"Defining tool {tool_name}")
                 description = operation.get("summary", f"{method.upper()} {path}")
                 parameters = operation.get("parameters", [])
@@ -210,22 +213,6 @@ def get_tools():
                     },
                 })
 
-    tools.append({
-        "type": "function",
-        "function": {
-            "name": "respond",
-            "description": "Respond to user",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "response": {
-                        "type": "string"
-                    }
-                },
-                "required": ["response"],
-            },
-        },
-    })
     return tools
 
 
