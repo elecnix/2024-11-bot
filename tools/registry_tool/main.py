@@ -15,7 +15,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 self_name = 'registry_tool'
-self_description = "Registry that can start tools."
+self_description = "Registry that can list tools and start them. The URL of each started tools is available through the list_tools operation."
 
 Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(filename=f'registry_tool.log', level=logging.INFO)

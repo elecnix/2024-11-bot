@@ -126,6 +126,16 @@ def call_tool(tool_call, tool_depth=0):
     return {"role": "tool", "content": f"Error! No matching path or method for tool: {invoked_name}"}
 
 
+def request_tool(tool_call):
+    """A virtual tool that adds a tool to the LLM context."""
+    tool_url = tool_call["function"]["arguments"]["url"]
+    schema = get_schema(tool_url)
+    tool_name = openapi_objects[schema["title"]]
+    openapi_objects[tool_name] = schema
+    app.logger.info(f"Received {tool_name}")
+    return {"role": "tool", "content": "Tool {tool_name} has been added to the context."}
+
+
 @app.route('/chat', methods=['POST'])
 def chat_route():
     tool_input = request.json
@@ -150,9 +160,10 @@ When invoking a tool, you must pick one from the provided list."""},
         for tool_call in model_response['message']['tool_calls']:
             invoked_name = tool_call["function"]["name"]
             # LLMs like to respond with a tool, so we give it one.
-            if invoked_name == "respond":
-                return {"role": "assistant", "content": tool_call["function"]["arguments"]["response"]}
-            messages.append(call_tool(tool_call, tool_depth))
+            if invoked_name == "request_tool":
+                messages.append(request_tool(tool_call))
+            else:
+                messages.append(call_tool(tool_call, tool_depth))
         model_response = ollama(messages, model, temperature)
 
     response = make_response(jsonify({'content': model_response['message']['content']}))
@@ -213,6 +224,23 @@ def get_tools():
                     },
                 })
 
+    # Add a virtual tool that registers a running tool into the LLM context.
+    tools.append({
+        "type": "function",
+        "function": {
+            "name": "request_tool",
+            "description": "Request access to a tool, given its URL. The tool must be started (running) and serve `/openapi.json`. If successful, the tool name will become invocable by the LLM.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "required": ["url"],
+            },
+        },
+    })
     return tools
 
 
@@ -234,8 +262,8 @@ def ollama(messages, model, temperature):
     return response.json()
 
 
-def get_schema(server_endpoint):
-    openapi = f'{server_endpoint["url"]}/openapi.json'
+def get_schema(url):
+    openapi = f'{url}/openapi.json'
     app.logger.info(f"GET {openapi}")
     return requests.get(openapi).json()
 
@@ -248,7 +276,7 @@ if __name__ == '__main__':
         boot = json.loads(''.join(input_data))
         app.logger.info(json.dumps(boot, indent=4))
         for server in boot["servers"]:
-            openapi_objects[server['x-tool']] = get_schema(server)
+            openapi_objects[server['x-tool']] = get_schema(server["url"])
             app.logger.info(f"Received {server['x-tool']}")
     except JSONDecodeError as e:
         app.logger.error(f"Failed to parse boot JSON\n{traceback.format_exc()}")
