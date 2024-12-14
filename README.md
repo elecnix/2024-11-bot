@@ -7,6 +7,15 @@ OpenAPI schema.
 
 ## How to start
 
+ollama has to be running. Install:
+
+    curl -fsSL https://ollama.com/install.sh | sh
+    ollama pull llama3.1:8b
+
+Alternatively:
+
+    export OPENAI_API_KEY="your_api_key_here"
+
 The recommended way is to run the root bot in a Docker container:
 
     docker run -v .:/root/ -w /root -e UV_PROJECT_ENVIRONMENT=/root/.venv-docker ghcr.io/astral-sh/uv:python3.12-alpine uv run bot.py

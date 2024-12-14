@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sys
 import traceback
 from json import JSONDecodeError
@@ -8,6 +9,7 @@ import requests
 from flask import Flask, request, jsonify, make_response
 
 OLLAMA_API_URL = "http://localhost:11434/api/chat"
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 self_name = 'chat'
 tool_blacklist = [self_name] # Don't allow self-calls, the LLM gets too confused.
 
@@ -254,9 +256,15 @@ def ollama(messages, model, temperature):
             "temperature": temperature,
         }
     }
-
-    app.logger.info(f"POST {OLLAMA_API_URL}\n{json.dumps(data, indent=4)}")
-    response = requests.post(OLLAMA_API_URL, json=data)
+    url = OPENAI_URL
+    #url = OLLAMA_API_URL
+    app.logger.info(f"POST {url}\n{json.dumps(data, indent=4)}")
+    key = os.getenv('OPENAI_API_KEY')
+    headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {key}",
+    }
+    response = requests.post(url, json=data, headers=headers)
     response.raise_for_status()
     app.logger.info(f"Model response:\n{json.dumps(response.json(), indent=4)}")
     return response.json()
