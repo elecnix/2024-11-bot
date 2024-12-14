@@ -45,6 +45,7 @@ def interactive(port: int):
             shutdown()
         except Exception as e:
             logger.exception("Exception in interactive mode")
+            print("Sorry, an error occured. Open bot.log for details.")
             shutdown()
             return
 
@@ -54,7 +55,7 @@ def read_user_input():
     try:
         user_input = json.loads(content)
     except json.JSONDecodeError:
-        user_input = {"tool": "chat", "resource": "/chat", "input": {"message": content}}
+        user_input = {"tool": "chat", "resource": "/chat", "input": {"message": content, "model":"gpt-4o-mini"}}
     return user_input
 
 
